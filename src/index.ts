@@ -6,6 +6,7 @@ import dotenv from "dotenv";
 import session from 'express-session'
 import passport from 'passport'
 import "./middlewares/passport_setup.middleware"
+import { connectDb } from "./utils/connectDb";
 dotenv.config();
 
 const app: Application = express();
@@ -35,9 +36,17 @@ app.use(express.urlencoded({ extended: true }));
 app.get("/", (req: Request, res: Response) => {
   res.send("Hello, Express with TypeScript! 🚀");
 });
-app.get("/", (req, res) => {
-    res.send("Google OAuth with Node.js & TypeScript");
-  });
+app.get("/auth/user", (req: Request, res: Response):void => {
+    if (req.isAuthenticated()) {
+        res.json({ loggedIn: true, user: req.user });
+    return;  
+    }
+      res.status(401).json({ loggedIn: false, message: "User is not authenticated" });
+});
+
+// app.get("/", (req, res) => {
+//     res.send("Google OAuth with Node.js & TypeScript");
+//   });
   
   // Google Auth Route
   app.get(
@@ -69,7 +78,7 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 
 const PORT = process.env.PORT || 5000;
 
-
+connectDb()
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on http://localhost:${PORT}`);
 });
