@@ -14,15 +14,21 @@ export interface IClickAnalytics extends Document {
     latitude?: number;
     longitude?: number;
   };
+  totalClicks?: number;
+  uniqueUsers?: number;
+  clicksByDate?: { date: string; clickCount: number }[];
+  osTypeStats?: { osName: string; uniqueClicks: number; uniqueUsers: number }[];
+  deviceTypeStats?: { deviceName: string; uniqueClicks: number; uniqueUsers: number }[];
 }
 
+// Define Schema
 const ClickAnalyticsSchema = new Schema<IClickAnalytics>(
   {
     shortUrlId: {
       type: Schema.Types.ObjectId,
       ref: "ShortURL",
       required: true,
-      index: true, // Ensures efficient queries
+      index: true, // Optimized for query performance
     },
     timestamp: {
       type: Date,
@@ -51,14 +57,44 @@ const ClickAnalyticsSchema = new Schema<IClickAnalytics>(
       latitude: { type: Number },
       longitude: { type: Number },
     },
+    totalClicks: {
+      type: Number,
+      default: 0,
+    },
+    uniqueUsers: {
+      type: Number,
+      default: 0,
+    },
+    clicksByDate: [
+      {
+        date: { type: String, required: true },
+        clickCount: { type: Number, required: true, default: 0 },
+      },
+    ],
+    osTypeStats: [
+      {
+        osName: { type: String, required: true },
+        uniqueClicks: { type: Number, default: 0 },
+        uniqueUsers: { type: Number, default: 0 },
+      },
+    ],
+    deviceTypeStats: [
+      {
+        deviceName: { type: String, required: true },
+        uniqueClicks: { type: Number, default: 0 },
+        uniqueUsers: { type: Number, default: 0 },
+      },
+    ],
   },
   {
-    timestamps: true, // Automatically add createdAt and updatedAt fields
+    timestamps: true, // Adds createdAt and updatedAt fields
   }
 );
 
-// Indexing for performance optimization
+// Indexing for better analytics queries
 ClickAnalyticsSchema.index({ shortUrlId: 1, timestamp: -1 });
+ClickAnalyticsSchema.index({ osType: 1 });
+ClickAnalyticsSchema.index({ deviceType: 1 });
 
 const ClickAnalytics = model<IClickAnalytics>("ClickAnalytics", ClickAnalyticsSchema);
 export default ClickAnalytics;
