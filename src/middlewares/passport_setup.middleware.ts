@@ -2,6 +2,7 @@ import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import dotenv from "dotenv";
 import { User, IUser } from "../models/user.model"; // Import User model
+import { generateToken } from "../utils/generate-token.utils";
 
 dotenv.config();
 
@@ -29,8 +30,9 @@ passport.use(
           user.lastLogin = new Date();
           await user.save();
         }
+        const token = generateToken(user._id.toString());
 
-        return done(null, user);
+        return done(null, {user,token} as any);
       } catch (error) {
         return done(error, false);
       }
@@ -38,17 +40,3 @@ passport.use(
   )
 );
 
-// Serialize user (store only user ID in session)
-passport.serializeUser((user: any, done) => {
-  done(null, user.id);
-});
-
-// Deserialize user (retrieve full user details from MongoDB)
-passport.deserializeUser(async (id, done) => {
-  try {
-    const user = await User.findById(id);
-    done(null, user);
-  } catch (error) {
-    done(error, null);
-  }
-});
