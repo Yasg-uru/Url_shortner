@@ -7,4 +7,5 @@ const ShortenRouter = Router();
 ShortenRouter.post('/shorten', isAuthenticated, rateLimiter, urlController.shorten);
 ShortenRouter.get('/:alias', isAuthenticated, urlController.redirect);
 ShortenRouter.get('/analytics/:alias', isAuthenticated, urlController.getUrlAnalytics);
+ShortenRouter.get('/analytics/topic/:topic', isAuthenticated, urlController.getTopicAnalytics);
 export default ShortenRouter;

@@ -268,6 +268,101 @@ class UrlShortenerController {
       next(error);
     }
   }
+  public async getTopicAnalytics(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { topic } = req.params;
+      const cacheKey = `topicAnalytics:${topic}`;
+
+      // Check Redis cache first
+      const cachedData = await redisClient.get(cacheKey);
+      if (cachedData) {
+        console.log(`✅ Cache hit for topic: ${topic}`);
+        res.status(200).json(JSON.parse(cachedData));
+        return
+      }
+
+      console.log(`❌ Cache miss for topic: ${topic}, fetching from DB`);
+
+      // Fetch all URLs under the given topic
+      const urls = await ShortURL.find({ topic }).select("_id shortUrl");
+      if (!urls.length) {
+        throw new AppError("No URLs found under this topic", 404);
+      }
+
+      const urlIds = urls.map((url) => url._id);
+
+      // Aggregate analytics data for the topic
+      const analytics = await ClickAnalytics.aggregate([
+        { $match: { shortUrlId: { $in: urlIds } } },
+        {
+          $group: {
+            _id: "$shortUrlId",
+            totalClicks: { $sum: 1 },
+            uniqueUsers: { $addToSet: "$ipAddress" },
+            clicksByDate: {
+              $push: {
+                date: { $dateToString: { format: "%Y-%m-%d", date: "$timestamp" } },
+                count: 1,
+              },
+            },
+          },
+        },
+      ]);
+
+      // Process analytics data
+      let totalClicks = 0;
+      let uniqueUsersSet = new Set();
+      let clicksByDateMap: Record<string, number> = {};
+
+      const urlAnalytics = urls.map((url) => {
+        const data = analytics.find((a) => a._id.toString() === url._id.toString());
+
+        if (!data) {
+          return {
+            shortUrl: url.shortUrl,
+            totalClicks: 0,
+            uniqueUsers: 0,
+          };
+        }
+
+        totalClicks += data.totalClicks;
+        data.uniqueUsers.forEach((user: string) => uniqueUsersSet.add(user));
+
+        // Aggregate clicks by date
+        data.clicksByDate.forEach((entry: { date: string; count: number }) => {
+          clicksByDateMap[entry.date] = (clicksByDateMap[entry.date] || 0) + entry.count;
+        });
+
+        return {
+          shortUrl: url.shortUrl,
+          totalClicks: data.totalClicks,
+          uniqueUsers: data.uniqueUsers.length,
+        };
+      });
+
+      // Format clicksByDate for response
+      const clicksByDate = Object.keys(clicksByDateMap).map((date) => ({
+        date,
+        totalClicks: clicksByDateMap[date],
+      }));
+
+      // Construct response
+      const responseData = {
+        totalClicks,
+        uniqueUsers: uniqueUsersSet.size,
+        clicksByDate,
+        urls: urlAnalytics,
+      };
+
+      // Cache response for 10 minutes
+      await redisClient.setex(cacheKey, 600, JSON.stringify(responseData));
+
+      res.status(200).json(responseData);
+    } catch (error) {
+      next(error);
+    }
+  }
+
 
 }
 
