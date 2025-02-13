@@ -26,9 +26,11 @@
     "express": "^4.21.2",
     "express-session": "^1.18.1",
     "helmet": "^8.0.0",
+    "ioredis": "^5.5.0",
     "morgan": "^1.10.0",
     "passport": "^0.7.0",
-    "passport-google-oauth20": "^2.0.0"
+    "passport-google-oauth20": "^2.0.0",
+    "urlshortner": "file:"
   },
   "name": "urlshortner",
   "version": "1.0.0",
