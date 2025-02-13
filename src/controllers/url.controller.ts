@@ -208,6 +208,67 @@ class UrlShortenerController {
       console.error("Analytics tracking failed:", error);
     }
   }
+  public async getUrlAnalytics(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { alias } = req.params;
+
+      // Check Redis cache first
+      const cacheKey = `analytics:${alias}`;
+      const cachedData = await redisClient.get(cacheKey);
+
+      if (cachedData) {
+        console.log(`✅ Cache hit for ${alias}`);
+        res.status(200).json(JSON.parse(cachedData));
+        return 
+      }
+
+      console.log(`❌ Cache miss for ${alias}, fetching from DB`);
+
+      // Find the Short URL
+      const shortUrl = await ShortURL.findOne({ shortUrl: alias });
+      if (!shortUrl) {
+        return next(new AppError("Short URL not found", 404))
+      }
+
+      // Retrieve analytics data
+      const analytics = await ClickAnalytics.findOne({ shortUrlId: shortUrl._id });
+
+      if (!analytics) {
+        const emptyResponse = {
+          totalClicks: 0,
+          uniqueUsers: 0,
+          clicksByDate: [],
+          osTypeStats: [],
+          deviceTypeStats: [],
+        };
+
+        // Cache empty response for 5 minutes to prevent frequent DB calls
+        await redisClient.setex(cacheKey, 300, JSON.stringify(emptyResponse));
+        res.status(200).json(emptyResponse);
+        return
+      }
+
+      // Filter clicks for the last 7 days
+      const last7Days = moment().subtract(7, "days").format("YYYY-MM-DD");
+      const recentClicks = (analytics.clicksByDate || []).filter((entry) => entry.date >= last7Days);
+
+      const responseData = {
+        totalClicks: analytics.totalClicks,
+        uniqueUsers: analytics.uniqueUsers,
+        clicksByDate: recentClicks,
+        osTypeStats: analytics.osTypeStats,
+        deviceTypeStats: analytics.deviceTypeStats,
+      };
+
+      // Cache response for 10 minutes
+      await redisClient.setex(cacheKey, 600, JSON.stringify(responseData));
+
+      res.status(200).json(responseData);
+    } catch (error) {
+      next(error);
+    }
+  }
+
 }
 
 export default new UrlShortenerController();
