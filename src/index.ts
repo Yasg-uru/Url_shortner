@@ -7,6 +7,7 @@ import session from 'express-session'
 import passport from 'passport'
 import "./middlewares/passport_setup.middleware"
 import { connectDb } from "./utils/connectDb";
+import { errorMiddleware } from "./middlewares/err.middleware";
 dotenv.config();
 
 const app: Application = express();
@@ -71,10 +72,7 @@ app.get("/auth/user", (req: Request, res: Response):void => {
     });
   });
 
-app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-  console.error(err.message);
-  res.status(500).json({ error: err.message });
-});
+app.use(errorMiddleware);
 
 const PORT = process.env.PORT || 5000;
 
