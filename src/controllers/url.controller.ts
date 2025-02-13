@@ -43,7 +43,7 @@ class UrlShortenerController {
             await redisClient.setex(shortUrlAlias, 86400, longUrl);
 
             // Construct the full short URL
-            const fullShortUrl = `${process.env.BASE_URL}/${shortUrlAlias}`;
+            const fullShortUrl = `${process.env.BASE_URL}/api/shorten${shortUrlAlias}`;
 
             res.status(201).json({
                 shortUrl: fullShortUrl,
@@ -53,6 +53,36 @@ class UrlShortenerController {
             console.error("Error creating short URL:", error);
             next(error); // Pass error to the global error handler
         }
+    }
+    public async redirect(req: Request, res: Response, next: NextFunction) {
+      try {
+        const { alias } = req.params;
+  
+        let cachedUrl = await redisClient.get(alias);
+        if (cachedUrl) {
+          return res.redirect(cachedUrl);
+        }
+  
+        const shortUrl = await ShortURL.findOne({ shortUrl: alias });
+        if (!shortUrl) {
+          throw new AppError("Short URL not found", 404);
+        }
+  
+        shortUrl.clicks += 1;
+        await shortUrl.save();
+  
+        // const geo = geoip.lookup(req.ip || "");
+  
+        // console.log({
+        //   ip: req.ip,
+        //   userAgent: req.headers["user-agent"],
+        //   location: geo ? `${geo.city}, ${geo.country}` : "Unknown",
+        // });
+  
+        res.redirect(shortUrl.longUrl);
+      } catch (error) {
+        next(error);
+      }
     }
 }
 

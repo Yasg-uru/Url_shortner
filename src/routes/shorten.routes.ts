@@ -5,5 +5,5 @@ import urlController from "../controllers/url.controller";
 
 const ShortenRouter = Router();
 ShortenRouter.post('/shorten', isAuthenticated, rateLimiter, urlController.shorten);
-
+ShortenRouter.get('/:alias', isAuthenticated, urlController.redirect)
 export default ShortenRouter;
