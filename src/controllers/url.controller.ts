@@ -22,6 +22,58 @@ class UrlShortenerController {
  
 
   }
+  public async getRecentUrls(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user?.userId; // Extract user ID from auth middleware
+      const { topic, sortBy, page = 1, limit = 20 } = req.query;
+
+      if (!userId) {
+        return next( new AppError("Unauthorized access", 401));
+      }
+
+     
+      const cacheKey = `recentUrls:${userId}:${topic || "all"}:${sortBy || "desc"}:${page}:${limit}`;
+
+      // Check Redis cache first
+      const cachedData = await redisClient.get(cacheKey);
+      if (cachedData) {
+        res.status(200).json(JSON.parse(cachedData));
+        return 
+      }
+
+    
+      const query: any = { createdBy: userId };
+      if (topic) {
+        query.topic = topic; 
+      }
+
+     
+      const sortOptions: any = {};
+      if (sortBy === "asc") {
+        sortOptions.createdAt = 1; 
+      } else {
+        sortOptions.createdAt = -1; 
+      }
+
+      // Fetch recent URLs from the database
+      const recentUrls = await ShortURL.find(query)
+        .sort(sortOptions)
+        .skip((Number(page) - 1) * Number(limit)) // Pagination
+        .limit(Number(limit));
+
+      if (!recentUrls.length) {
+        res.status(200).json({ message: "No URLs found." });
+        return 
+      }
+
+      // Cache the response for 10 minutes
+      await redisClient.setex(cacheKey, 600, JSON.stringify(recentUrls));
+
+      res.status(200).json(recentUrls);
+    } catch (error) {
+      next(error);
+    }
+  }
 
   public async shorten(req: Request, res: Response, next: NextFunction) {
     try {
@@ -57,6 +109,12 @@ class UrlShortenerController {
 
       await newShortUrl.save();
       await invalidateCache([`user:${userId}:topics`, `overallAnalytics:${userId}`]);
+      const cachePattern = `recentUrls:${userId}:*`;
+      const keys = await redisClient.keys(cachePattern);
+      if (keys.length > 0) {
+        await redisClient.del(keys);
+      }
+
       // Cache URL in Redis for faster access (expires in 24 hours)
       try {
         await redisClient.setex(

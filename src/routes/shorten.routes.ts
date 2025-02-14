@@ -27,4 +27,5 @@ ShortenRouter.get(
   urlController.getTopicAnalytics
 );
 ShortenRouter.get("/topics", isAuthenticated, urlController.getUserTopis);
+ShortenRouter.get("/recent-urls", isAuthenticated, urlController.getRecentUrls);
 export default ShortenRouter;
