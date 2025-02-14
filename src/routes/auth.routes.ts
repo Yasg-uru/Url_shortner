@@ -24,7 +24,7 @@ authRouter.get(
       sameSite: "strict",
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days expiry
     });
-    res.redirect("http://localhost:5174/");
+    res.redirect("http://localhost:5173/");
   }
 );
 authRouter.post("/logout", (req: Request, res: Response) => {

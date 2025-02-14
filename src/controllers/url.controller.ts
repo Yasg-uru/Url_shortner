@@ -8,12 +8,21 @@ import ClickAnalytics from "../models/analysis";
 import useragent from "express-useragent";
 import mongoose from "mongoose";
 import moment from "moment";
-
+ async function invalidateCache(keys: string[]) {
+  try {
+    redisClient.del(...keys);
+  } catch (error) {
+    console.error("Cache invalidation failed:", error);
+  }
+}
 class UrlShortenerController {
   constructor() {
     this.redirect = this.redirect.bind(this);
     this.logAnalytics = this.logAnalytics.bind(this);
+ 
+
   }
+
   public async shorten(req: Request, res: Response, next: NextFunction) {
     try {
       const { longUrl, customAlias, topic } = req.body;
@@ -47,7 +56,7 @@ class UrlShortenerController {
       });
 
       await newShortUrl.save();
-
+      await invalidateCache([`user:${userId}:topics`, `overallAnalytics:${userId}`]);
       // Cache URL in Redis for faster access (expires in 24 hours)
       try {
         await redisClient.setex(
@@ -94,7 +103,7 @@ class UrlShortenerController {
       // Increment click count
       shortUrl.clicks += 1;
       await shortUrl.save();
-
+      await invalidateCache([alias, `analytics:${alias}`]);
       // Log analytics data
       this.logAnalytics(req, shortUrl).catch((err) =>
         console.error("Analytics Error:", err)
@@ -248,6 +257,7 @@ class UrlShortenerController {
       }
 
       await analytics.save();
+      await invalidateCache([`analytics:${shortUrl.shortUrl}`]);
     } catch (error) {
       console.error("Analytics tracking failed:", error);
     }
