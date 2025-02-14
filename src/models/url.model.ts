@@ -1,5 +1,6 @@
 import mongoose , {Schema} from "mongoose";
 export interface IShortURL extends Document {
+  _id:mongoose.Types.ObjectId,
     longUrl: string;
     shortUrl: string;
     customAlias?: string;

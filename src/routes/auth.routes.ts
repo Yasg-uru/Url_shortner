@@ -1,7 +1,8 @@
-import { Request, Response, Router } from "express";
+import { NextFunction, Request, Response, Router } from "express";
 import passport from "passport";
 import { isAuthenticated } from "../middlewares/auth.middleware";
 import { User } from "../models/user.model";
+import { AppError } from "../utils/errorhandler.utils";
 const authRouter = Router();
 authRouter.get(
   "/google",
@@ -23,10 +24,7 @@ authRouter.get(
       sameSite: "strict",
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days expiry
     });
-    res.json({
-      token, // Send JWT to frontend
-      user,
-    });
+    res.redirect("http://localhost:5174/");
   }
 );
 authRouter.post("/logout", (req: Request, res: Response) => {
@@ -45,19 +43,38 @@ authRouter.post("/logout", (req: Request, res: Response) => {
 
   res.json({ message: "Logged out successfully" });
 });
-authRouter.get("/profile", isAuthenticated, async (req: Request, res: Response) => {
+authRouter.get(
+  "/check", isAuthenticated, 
+  async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const user = await User.findById(req.user?.userId); 
-  
+      const userId = req.user?.userId;
+      const user = await User.findById(userId);
       if (!user) {
-          res.status(404).json({ message: "User not found" });
-          return 
+        return next(new AppError("please login to continue", 400));
       }
-  
+      res.status(200).json({
+        user,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+authRouter.get(
+  "/profile",
+  isAuthenticated,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const user = await User.findById(req.user?.userId);
+
+      if (!user) {
+        return next(new AppError("user not found", 404));
+      }
+
       res.json({ user });
     } catch (error) {
-      console.error("Error fetching profile:", error);
-      res.status(500).json({ message: "Server error" });
+      return next(error);
     }
-  });
+  }
+);
 export default authRouter;

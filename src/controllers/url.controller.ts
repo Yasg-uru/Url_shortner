@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import validUrl from "valid-url";
-import { ShortURL } from "../models/url.model";
+import { IShortURL, ShortURL } from "../models/url.model";
 import { AppError } from "../utils/errorhandler.utils";
 import redisClient from "../configurations/redis.config";
 import geoip from "geoip-lite";
@@ -47,10 +47,14 @@ class UrlShortenerController {
       });
 
       await newShortUrl.save();
-
+      
       // Cache URL in Redis for faster access (expires in 24 hours)
       try {
-        await redisClient.setex(shortUrlAlias, 86400, longUrl);
+        await redisClient.setex(
+          shortUrlAlias,
+          86400,
+          JSON.stringify(newShortUrl)
+        );
       } catch (redisError) {
         console.error("Redis caching failed:", redisError);
       }
@@ -72,13 +76,15 @@ class UrlShortenerController {
     try {
       const { alias } = req.params;
 
-      let cachedUrl = await redisClient.get(alias);
-      // if (cachedUrl) {
-      //   // this.logAnalytics(req, alias).catch((err) =>
-      //   //   console.error("Analytics Error:", err)
-      //   // );
-      //   return res.redirect(cachedUrl);
-      // }
+      let cachedData = await redisClient.get(alias);
+      if (cachedData) {
+        const urlData: IShortURL = JSON.parse(cachedData);
+        console.log('this is cached data :', cachedData)
+        this.logAnalytics(req, urlData._id).catch((err) =>
+          console.error("Analytics Error:", err)
+        );
+        return res.redirect(urlData.longUrl);
+      }
 
       const shortUrl = await ShortURL.findOne({ shortUrl: alias });
       if (!shortUrl) {
@@ -95,7 +101,7 @@ class UrlShortenerController {
       );
 
       // Cache the URL for faster redirects
-      await redisClient.setex(alias, 86400, shortUrl.longUrl);
+      await redisClient.setex(alias, 86400, JSON.stringify(shortUrl));
 
       res.redirect(shortUrl.longUrl);
     } catch (error) {
@@ -114,9 +120,8 @@ class UrlShortenerController {
       const userAgent = req.headers["user-agent"] || "Unknown";
       const geo = geoip.lookup(ip as string);
       const ua = useragent.parse(userAgent || "");
-      const currentDate = moment().format("YYYY-MM-DD"); // Format date as YYYY-MM-DD
+      const currentDate = moment().format("YYYY-MM-DD");
 
-      // Check for existing analytics for this short URL
       let analytics = await ClickAnalytics.findOne({ shortUrlId });
 
       if (!analytics) {
@@ -141,10 +146,8 @@ class UrlShortenerController {
           ],
         });
       } else {
-        // Update total click count
-        analytics.totalClicks = (analytics.totalClicks || 0 ) +1;
+        analytics.totalClicks = (analytics.totalClicks || 0) + 1;
 
-        // Update unique users count
         const existingUser = await ClickAnalytics.findOne({
           shortUrlId,
           ipAddress: ip,
@@ -153,7 +156,6 @@ class UrlShortenerController {
           analytics.uniqueUsers = (analytics.uniqueUsers || 0) + 1;
         }
 
-        // Update clicks by date (for last 7 days)
         const last7Days = moment().subtract(7, "days").format("YYYY-MM-DD");
         analytics.clicksByDate = (analytics.clicksByDate || [])
           .filter((data) => data.date >= last7Days) // Keep only recent 7 days
@@ -167,7 +169,6 @@ class UrlShortenerController {
           analytics.clicksByDate.push({ date: currentDate, clickCount: 1 });
         }
 
-        // Update OS statistics
         analytics.osTypeStats = analytics.osTypeStats || [];
         const osEntry = analytics.osTypeStats.find((os) => os.osName === ua.os);
         if (osEntry) {
@@ -208,7 +209,11 @@ class UrlShortenerController {
       console.error("Analytics tracking failed:", error);
     }
   }
-  public async getUrlAnalytics(req: Request, res: Response, next: NextFunction) {
+  public async getUrlAnalytics(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
     try {
       const { alias } = req.params;
 
@@ -217,21 +222,20 @@ class UrlShortenerController {
       const cachedData = await redisClient.get(cacheKey);
 
       if (cachedData) {
-        console.log(`✅ Cache hit for ${alias}`);
         res.status(200).json(JSON.parse(cachedData));
-        return 
+        return;
       }
-
-      console.log(`❌ Cache miss for ${alias}, fetching from DB`);
 
       // Find the Short URL
       const shortUrl = await ShortURL.findOne({ shortUrl: alias });
       if (!shortUrl) {
-        return next(new AppError("Short URL not found", 404))
+        return next(new AppError("Short URL not found", 404));
       }
 
       // Retrieve analytics data
-      const analytics = await ClickAnalytics.findOne({ shortUrlId: shortUrl._id });
+      const analytics = await ClickAnalytics.findOne({
+        shortUrlId: shortUrl._id,
+      });
 
       if (!analytics) {
         const emptyResponse = {
@@ -245,12 +249,14 @@ class UrlShortenerController {
         // Cache empty response for 5 minutes to prevent frequent DB calls
         await redisClient.setex(cacheKey, 300, JSON.stringify(emptyResponse));
         res.status(200).json(emptyResponse);
-        return
+        return;
       }
 
       // Filter clicks for the last 7 days
       const last7Days = moment().subtract(7, "days").format("YYYY-MM-DD");
-      const recentClicks = (analytics.clicksByDate || []).filter((entry) => entry.date >= last7Days);
+      const recentClicks = (analytics.clicksByDate || []).filter(
+        (entry) => entry.date >= last7Days
+      );
 
       const responseData = {
         totalClicks: analytics.totalClicks,
@@ -268,22 +274,24 @@ class UrlShortenerController {
       next(error);
     }
   }
-  public async getTopicAnalytics(req: Request, res: Response, next: NextFunction) {
+  public async getTopicAnalytics(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
     try {
       const { topic } = req.params;
-      const cacheKey = `topicAnalytics:${topic}`;
+      const userId = req.user?.userId;
+      const cacheKey = `topicAnalytics:${userId}:${topic}`;
+
 
       // Check Redis cache first
       const cachedData = await redisClient.get(cacheKey);
       if (cachedData) {
-        console.log(`✅ Cache hit for topic: ${topic}`);
         res.status(200).json(JSON.parse(cachedData));
-        return
+        return;
       }
 
-      console.log(`❌ Cache miss for topic: ${topic}, fetching from DB`);
-
-      // Fetch all URLs under the given topic
       const urls = await ShortURL.find({ topic }).select("_id shortUrl");
       if (!urls.length) {
         throw new AppError("No URLs found under this topic", 404);
@@ -291,7 +299,6 @@ class UrlShortenerController {
 
       const urlIds = urls.map((url) => url._id);
 
-      // Aggregate analytics data for the topic
       const analytics = await ClickAnalytics.aggregate([
         { $match: { shortUrlId: { $in: urlIds } } },
         {
@@ -301,7 +308,9 @@ class UrlShortenerController {
             uniqueUsers: { $addToSet: "$ipAddress" },
             clicksByDate: {
               $push: {
-                date: { $dateToString: { format: "%Y-%m-%d", date: "$timestamp" } },
+                date: {
+                  $dateToString: { format: "%Y-%m-%d", date: "$timestamp" },
+                },
                 count: 1,
               },
             },
@@ -309,13 +318,14 @@ class UrlShortenerController {
         },
       ]);
 
-      // Process analytics data
       let totalClicks = 0;
       let uniqueUsersSet = new Set();
       let clicksByDateMap: Record<string, number> = {};
 
       const urlAnalytics = urls.map((url) => {
-        const data = analytics.find((a) => a._id.toString() === url._id.toString());
+        const data = analytics.find(
+          (a) => a._id.toString() === url._id.toString()
+        );
 
         if (!data) {
           return {
@@ -330,7 +340,8 @@ class UrlShortenerController {
 
         // Aggregate clicks by date
         data.clicksByDate.forEach((entry: { date: string; count: number }) => {
-          clicksByDateMap[entry.date] = (clicksByDateMap[entry.date] || 0) + entry.count;
+          clicksByDateMap[entry.date] =
+            (clicksByDateMap[entry.date] || 0) + entry.count;
         });
 
         return {
@@ -354,7 +365,6 @@ class UrlShortenerController {
         urls: urlAnalytics,
       };
 
-      // Cache response for 10 minutes
       await redisClient.setex(cacheKey, 600, JSON.stringify(responseData));
 
       res.status(200).json(responseData);
@@ -362,7 +372,11 @@ class UrlShortenerController {
       next(error);
     }
   }
-  public async getOverallAnalytics(req: Request, res: Response, next: NextFunction) {
+  public async getOverallAnalytics(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
     try {
       const userId = req.user?.userId;
       if (!userId) return next(new AppError("Unauthorized access", 401));
@@ -372,15 +386,14 @@ class UrlShortenerController {
       // Check Redis cache
       const cachedData = await redisClient.get(cacheKey);
       if (cachedData) {
-        console.log(`✅ Cache hit for user: ${userId}`);
         res.status(200).json(JSON.parse(cachedData));
-        return 
+        return;
       }
 
-      console.log(`❌ Cache miss for user: ${userId}, fetching from DB`);
-
       // Fetch all URLs created by the user
-      const urls = await ShortURL.find({ createdBy: userId }).select("_id shortUrl");
+      const urls = await ShortURL.find({ createdBy: userId }).select(
+        "_id shortUrl"
+      );
       if (!urls.length) {
         res.status(200).json({
           totalUrls: 0,
@@ -390,7 +403,7 @@ class UrlShortenerController {
           osType: [],
           deviceType: [],
         });
-        return
+        return;
       }
 
       const urlIds = urls.map((url) => url._id);
@@ -405,7 +418,9 @@ class UrlShortenerController {
             uniqueUsers: { $addToSet: "$ipAddress" },
             clicksByDate: {
               $push: {
-                date: { $dateToString: { format: "%Y-%m-%d", date: "$timestamp" } },
+                date: {
+                  $dateToString: { format: "%Y-%m-%d", date: "$timestamp" },
+                },
                 count: 1,
               },
             },
@@ -434,12 +449,11 @@ class UrlShortenerController {
           osType: [],
           deviceType: [],
         });
-        return 
+        return;
       }
 
       const data = analytics[0];
 
-      // Aggregate clicks by date
       const clicksByDateMap: Record<string, number> = {};
       interface ClickByDateEntry {
         date: string;
@@ -457,7 +471,8 @@ class UrlShortenerController {
       }
 
       data.clicksByDate.forEach((entry: ClickByDateEntry) => {
-        clicksByDateMap[entry.date] = (clicksByDateMap[entry.date] || 0) + entry.count;
+        clicksByDateMap[entry.date] =
+          (clicksByDateMap[entry.date] || 0) + entry.count;
       });
 
       const clicksByDate = Object.keys(clicksByDateMap).map((date) => ({
@@ -465,7 +480,6 @@ class UrlShortenerController {
         totalClicks: clicksByDateMap[date],
       }));
 
-      // Aggregate OS statistics
       const osTypeMap: Record<string, Set<string>> = {};
       interface OsTypeEntry {
         osName: string;
@@ -485,7 +499,6 @@ class UrlShortenerController {
         uniqueUsers: osTypeMap[osName].size,
       }));
 
-      // Aggregate Device statistics
       const deviceTypeMap: Record<string, Set<string>> = {};
       interface DeviceTypeEntry {
         deviceName: string;
@@ -505,7 +518,6 @@ class UrlShortenerController {
         uniqueUsers: deviceTypeMap[deviceName].size,
       }));
 
-      // Construct response
       const responseData = {
         totalUrls: urls.length,
         totalClicks: data.totalClicks,
@@ -523,8 +535,6 @@ class UrlShortenerController {
       next(error);
     }
   }
-
-
 }
 
 export default new UrlShortenerController();

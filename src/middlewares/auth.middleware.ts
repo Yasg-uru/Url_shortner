@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
+import { AppError } from "../utils/errorhandler.utils";
 
 dotenv.config();
 
@@ -15,8 +16,8 @@ export const isAuthenticated = (
 ) => {
   const token = req.cookies?.token; 
   if (!token) {
-    res.status(401).json({ message: "Unauthorized - No token provided" });
-    return;
+    
+    return next(new AppError('Unauthorized - No token provided', 401))
   }
 
   try {
@@ -26,7 +27,7 @@ export const isAuthenticated = (
     req.user = decoded; // Attach user info to request
     next();
   } catch (error) {
-    res.status(401).json({ message: "Invalid or expired token" });
-    return;
+   
+    return next(new AppError('Invalid or expired token', 401))
   }
 };

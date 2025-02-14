@@ -11,6 +11,7 @@ import { errorMiddleware } from "./middlewares/err.middleware";
 import ShortenRouter from "./routes/shorten.routes";
 import cookieParser from "cookie-parser";
 import authRouter from "./routes/auth.routes";
+import { rateLimiter } from "./middlewares/rate-limiter.middleware";
 dotenv.config();
 
 const app: Application = express();
@@ -25,9 +26,12 @@ app.use(
 );
 app.use(passport.initialize());
 app.use(passport.session());
-app.use(cors());
+app.use(cors({
+  origin:["http://localhost:5173","http://localhost:5174"],
+  credentials:true
+}));
 app.use(cookieParser());
-
+// app.use(rateLimiter)
 app.use(helmet());
 
 app.use(morgan("dev"));
