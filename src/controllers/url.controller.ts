@@ -362,6 +362,167 @@ class UrlShortenerController {
       next(error);
     }
   }
+  public async getOverallAnalytics(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) return next(new AppError("Unauthorized access", 401));
+
+      const cacheKey = `overallAnalytics:${userId}`;
+
+      // Check Redis cache
+      const cachedData = await redisClient.get(cacheKey);
+      if (cachedData) {
+        console.log(`✅ Cache hit for user: ${userId}`);
+        res.status(200).json(JSON.parse(cachedData));
+        return 
+      }
+
+      console.log(`❌ Cache miss for user: ${userId}, fetching from DB`);
+
+      // Fetch all URLs created by the user
+      const urls = await ShortURL.find({ createdBy: userId }).select("_id shortUrl");
+      if (!urls.length) {
+        res.status(200).json({
+          totalUrls: 0,
+          totalClicks: 0,
+          uniqueUsers: 0,
+          clicksByDate: [],
+          osType: [],
+          deviceType: [],
+        });
+        return
+      }
+
+      const urlIds = urls.map((url) => url._id);
+
+      // Aggregate analytics data for all URLs
+      const analytics = await ClickAnalytics.aggregate([
+        { $match: { shortUrlId: { $in: urlIds } } },
+        {
+          $group: {
+            _id: null,
+            totalClicks: { $sum: 1 },
+            uniqueUsers: { $addToSet: "$ipAddress" },
+            clicksByDate: {
+              $push: {
+                date: { $dateToString: { format: "%Y-%m-%d", date: "$timestamp" } },
+                count: 1,
+              },
+            },
+            osType: {
+              $push: {
+                osName: "$osType",
+                ipAddress: "$ipAddress",
+              },
+            },
+            deviceType: {
+              $push: {
+                deviceName: "$deviceType",
+                ipAddress: "$ipAddress",
+              },
+            },
+          },
+        },
+      ]);
+
+      if (!analytics.length) {
+        res.status(200).json({
+          totalUrls: urls.length,
+          totalClicks: 0,
+          uniqueUsers: 0,
+          clicksByDate: [],
+          osType: [],
+          deviceType: [],
+        });
+        return 
+      }
+
+      const data = analytics[0];
+
+      // Aggregate clicks by date
+      const clicksByDateMap: Record<string, number> = {};
+      interface ClickByDateEntry {
+        date: string;
+        count: number;
+      }
+
+      interface OsTypeEntry {
+        osName: string;
+        ipAddress: string;
+      }
+
+      interface DeviceTypeEntry {
+        deviceName: string;
+        ipAddress: string;
+      }
+
+      data.clicksByDate.forEach((entry: ClickByDateEntry) => {
+        clicksByDateMap[entry.date] = (clicksByDateMap[entry.date] || 0) + entry.count;
+      });
+
+      const clicksByDate = Object.keys(clicksByDateMap).map((date) => ({
+        date,
+        totalClicks: clicksByDateMap[date],
+      }));
+
+      // Aggregate OS statistics
+      const osTypeMap: Record<string, Set<string>> = {};
+      interface OsTypeEntry {
+        osName: string;
+        ipAddress: string;
+      }
+
+      data.osType.forEach((entry: OsTypeEntry) => {
+        if (!osTypeMap[entry.osName]) {
+          osTypeMap[entry.osName] = new Set<string>();
+        }
+        osTypeMap[entry.osName].add(entry.ipAddress);
+      });
+
+      const osType = Object.keys(osTypeMap).map((osName) => ({
+        osName,
+        uniqueClicks: osTypeMap[osName].size,
+        uniqueUsers: osTypeMap[osName].size,
+      }));
+
+      // Aggregate Device statistics
+      const deviceTypeMap: Record<string, Set<string>> = {};
+      interface DeviceTypeEntry {
+        deviceName: string;
+        ipAddress: string;
+      }
+
+      data.deviceType.forEach((entry: DeviceTypeEntry) => {
+        if (!deviceTypeMap[entry.deviceName]) {
+          deviceTypeMap[entry.deviceName] = new Set<string>();
+        }
+        deviceTypeMap[entry.deviceName].add(entry.ipAddress);
+      });
+
+      const deviceType = Object.keys(deviceTypeMap).map((deviceName) => ({
+        deviceName,
+        uniqueClicks: deviceTypeMap[deviceName].size,
+        uniqueUsers: deviceTypeMap[deviceName].size,
+      }));
+
+      // Construct response
+      const responseData = {
+        totalUrls: urls.length,
+        totalClicks: data.totalClicks,
+        uniqueUsers: data.uniqueUsers.length,
+        clicksByDate,
+        osType,
+        deviceType,
+      };
+
+      // Cache response for 10 minutes
+      await redisClient.setex(cacheKey, 600, JSON.stringify(responseData));
+
+      res.status(200).json(responseData);
+    } catch (error) {
+      next(error);
+    }
+  }
 
 
 }
