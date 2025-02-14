@@ -27,7 +27,7 @@ app.use(
 app.use(passport.initialize());
 app.use(passport.session());
 app.use(cors({
-  origin:["http://localhost:5173","http://localhost:5174"],
+  origin:["http://localhost:5173","http://localhost:5174", "https://url-shortner-frontend-06gc.onrender.com"],
   credentials:true
 }));
 app.use(cookieParser());
