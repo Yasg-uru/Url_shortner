@@ -14,11 +14,11 @@ export interface IClickAnalytics extends Document {
     latitude?: number;
     longitude?: number;
   };
-  totalClicks?: number;
-  uniqueUsers?: number;
-  clicksByDate?: { date: string; clickCount: number }[];
-  osTypeStats?: { osName: string; uniqueClicks: number; uniqueUsers: number }[];
-  deviceTypeStats?: { deviceName: string; uniqueClicks: number; uniqueUsers: number }[];
+  totalClicks: number;
+  uniqueUsers: { userId: mongoose.Types.ObjectId }[];
+  clicksByDate: { date: string; clickCount: number }[];
+  osTypeStats: { osName: string; uniqueClicks: number; uniqueUsers: number }[];
+  deviceTypeStats: { deviceName: string; uniqueClicks: number; uniqueUsers: number }[];
 }
 
 // Define Schema
@@ -61,10 +61,11 @@ const ClickAnalyticsSchema = new Schema<IClickAnalytics>(
       type: Number,
       default: 0,
     },
-    uniqueUsers: {
-      type: Number,
-      default: 0,
-    },
+    uniqueUsers: [
+      {
+        userId: { type: String, required: true },
+      },
+    ],
     clicksByDate: [
       {
         date: { type: String, required: true },

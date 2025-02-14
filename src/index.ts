@@ -31,7 +31,7 @@ app.use(cors({
   credentials:true
 }));
 app.use(cookieParser());
-// app.use(rateLimiter)
+
 app.use(helmet());
 
 app.use(morgan("dev"));

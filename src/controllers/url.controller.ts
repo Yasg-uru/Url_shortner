@@ -47,7 +47,7 @@ class UrlShortenerController {
       });
 
       await newShortUrl.save();
-      
+
       // Cache URL in Redis for faster access (expires in 24 hours)
       try {
         await redisClient.setex(
@@ -79,8 +79,8 @@ class UrlShortenerController {
       let cachedData = await redisClient.get(alias);
       if (cachedData) {
         const urlData: IShortURL = JSON.parse(cachedData);
-        console.log('this is cached data :', cachedData)
-        this.logAnalytics(req, urlData._id).catch((err) =>
+        console.log("this is cached data :", cachedData);
+        this.logAnalytics(req, urlData).catch((err) =>
           console.error("Analytics Error:", err)
         );
         return res.redirect(urlData.longUrl);
@@ -96,7 +96,7 @@ class UrlShortenerController {
       await shortUrl.save();
 
       // Log analytics data
-      this.logAnalytics(req, shortUrl._id).catch((err) =>
+      this.logAnalytics(req, shortUrl).catch((err) =>
         console.error("Analytics Error:", err)
       );
 
@@ -108,27 +108,44 @@ class UrlShortenerController {
       next(error);
     }
   }
-
-  private async logAnalytics(
-    req: Request,
-    shortUrlId: mongoose.Types.ObjectId
-  ) {
+  private async logAnalytics(req: Request, shortUrl: IShortURL) {
     try {
-      console.log("Logging analytics for:", { shortUrlId, ip: req.ip });
+      console.log("Logging analytics for:", {
+        shortUrlId: shortUrl._id,
+        ip: req.ip,
+      });
 
-      const ip = req.ip || req.headers["x-forwarded-for"] || "Unknown";
+      // Ensure valid IP
+      const ip = req.headers["x-forwarded-for"]
+        ? (req.headers["x-forwarded-for"] as string).trim()
+        : req.ip || "Unknown";
+      console.log("this is ip :", req.ip);
+
+      // Get user agent
       const userAgent = req.headers["user-agent"] || "Unknown";
-      const geo = geoip.lookup(ip as string);
-      const ua = useragent.parse(userAgent || "");
+      const ua = useragent.parse(userAgent);
+
+      // GeoIP lookup (Handle errors)
+      let location = "Unknown";
+      const geo = geoip.lookup(ip);
+      if (geo) {
+        location = `${geo.city}, ${geo.country}`;
+      }
+
+      // Current date
       const currentDate = moment().format("YYYY-MM-DD");
 
-      let analytics = await ClickAnalytics.findOne({ shortUrlId });
+      // Check if analytics exist for this short URL
+      let analytics = await ClickAnalytics.findOne({
+        shortUrlId: shortUrl._id,
+      });
 
       if (!analytics) {
+        // Create new entry if none exists
         analytics = new ClickAnalytics({
-          shortUrlId,
+          shortUrlId: shortUrl._id,
           totalClicks: 1,
-          uniqueUsers: 1,
+          uniqueUsers: [{ ip }],
           clicksByDate: [{ date: currentDate, clickCount: 1 }],
           osTypeStats: [
             { osName: ua.os || "Unknown", uniqueClicks: 1, uniqueUsers: 1 },
@@ -146,34 +163,55 @@ class UrlShortenerController {
           ],
         });
       } else {
-        analytics.totalClicks = (analytics.totalClicks || 0) + 1;
+        // Increment total clicks
+        analytics.totalClicks += 1;
 
-        const existingUser = await ClickAnalytics.findOne({
-          shortUrlId,
-          ipAddress: ip,
-        });
-        if (!existingUser) {
-          analytics.uniqueUsers = (analytics.uniqueUsers || 0) + 1;
+        // Ensure uniqueUsers array exists
+        analytics.uniqueUsers = analytics.uniqueUsers || [];
+
+        // Check if IP exists for unique users
+        if (
+          !analytics.uniqueUsers.some(
+            (user) => user.userId.toString() === ip.toString()
+          )
+        ) {
+          if (req.user && req.user.userId) {
+            analytics.uniqueUsers.push({
+              userId: req.user.userId as unknown as mongoose.Types.ObjectId,
+            });
+          }
         }
 
-        const last7Days = moment().subtract(7, "days").format("YYYY-MM-DD");
-        analytics.clicksByDate = (analytics.clicksByDate || [])
-          .filter((data) => data.date >= last7Days) // Keep only recent 7 days
-          .map((data) =>
-            data.date === currentDate
-              ? { ...data, clickCount: data.clickCount + 1 }
-              : data
-          );
+        // Ensure clicksByDate is an array
+        analytics.clicksByDate = analytics.clicksByDate || [];
 
-        if (!analytics.clicksByDate.find((data) => data.date === currentDate)) {
+        // Update click count for today
+        let todayEntry = analytics.clicksByDate.find(
+          (entry) => entry.date === currentDate
+        );
+        if (todayEntry) {
+          todayEntry.clickCount += 1;
+        } else {
           analytics.clicksByDate.push({ date: currentDate, clickCount: 1 });
         }
 
-        analytics.osTypeStats = analytics.osTypeStats || [];
-        const osEntry = analytics.osTypeStats.find((os) => os.osName === ua.os);
+        // Keep only the last 7 days
+        const last7Days = moment().subtract(7, "days").format("YYYY-MM-DD");
+        analytics.clicksByDate = analytics.clicksByDate.filter(
+          (entry) => entry.date >= last7Days
+        );
+
+        // Update OS stats
+        let osEntry = analytics.osTypeStats.find((os) => os.osName === ua.os);
         if (osEntry) {
           osEntry.uniqueClicks += 1;
-          if (!existingUser) osEntry.uniqueUsers += 1;
+          if (
+            !analytics.uniqueUsers.some(
+              (user) => user.userId.toString() === ip.toString()
+            )
+          ) {
+            osEntry.uniqueUsers += 1;
+          }
         } else {
           analytics.osTypeStats.push({
             osName: ua.os || "Unknown",
@@ -182,19 +220,24 @@ class UrlShortenerController {
           });
         }
 
-        // Update device type statistics
+        // Update device type stats
         const deviceType = ua.isMobile
           ? "Mobile"
           : ua.isTablet
           ? "Tablet"
           : "Desktop";
-        analytics.deviceTypeStats = analytics.deviceTypeStats || [];
-        const deviceEntry = analytics.deviceTypeStats.find(
+        let deviceEntry = analytics.deviceTypeStats.find(
           (device) => device.deviceName === deviceType
         );
         if (deviceEntry) {
           deviceEntry.uniqueClicks += 1;
-          if (!existingUser) deviceEntry.uniqueUsers += 1;
+          if (
+            !analytics.uniqueUsers.some(
+              (user) => user.userId.toString() === req.user?.userId.toString()
+            )
+          ) {
+            deviceEntry.uniqueUsers += 1;
+          }
         } else {
           analytics.deviceTypeStats.push({
             deviceName: deviceType,
@@ -209,6 +252,7 @@ class UrlShortenerController {
       console.error("Analytics tracking failed:", error);
     }
   }
+
   public async getUrlAnalytics(
     req: Request,
     res: Response,
@@ -221,10 +265,10 @@ class UrlShortenerController {
       const cacheKey = `analytics:${alias}`;
       const cachedData = await redisClient.get(cacheKey);
 
-      if (cachedData) {
-        res.status(200).json(JSON.parse(cachedData));
-        return;
-      }
+      // if (cachedData) {
+      //   res.status(200).json(JSON.parse(cachedData));
+      //   return;
+      // }
 
       // Find the Short URL
       const shortUrl = await ShortURL.findOne({ shortUrl: alias });
@@ -254,13 +298,14 @@ class UrlShortenerController {
 
       // Filter clicks for the last 7 days
       const last7Days = moment().subtract(7, "days").format("YYYY-MM-DD");
-      const recentClicks = (analytics.clicksByDate || []).filter(
+      const recentClicks = analytics.clicksByDate.filter(
         (entry) => entry.date >= last7Days
       );
 
+      // Construct the final response
       const responseData = {
         totalClicks: analytics.totalClicks,
-        uniqueUsers: analytics.uniqueUsers,
+        uniqueUsers: analytics.uniqueUsers.length, // Corrected: return count instead of full array
         clicksByDate: recentClicks,
         osTypeStats: analytics.osTypeStats,
         deviceTypeStats: analytics.deviceTypeStats,
@@ -274,6 +319,7 @@ class UrlShortenerController {
       next(error);
     }
   }
+
   public async getTopicAnalytics(
     req: Request,
     res: Response,
@@ -284,7 +330,6 @@ class UrlShortenerController {
       const userId = req.user?.userId;
       const cacheKey = `topicAnalytics:${userId}:${topic}`;
 
-
       // Check Redis cache first
       const cachedData = await redisClient.get(cacheKey);
       if (cachedData) {
@@ -292,6 +337,7 @@ class UrlShortenerController {
         return;
       }
 
+      // Get all URLs under this topic
       const urls = await ShortURL.find({ topic }).select("_id shortUrl");
       if (!urls.length) {
         throw new AppError("No URLs found under this topic", 404);
@@ -299,27 +345,21 @@ class UrlShortenerController {
 
       const urlIds = urls.map((url) => url._id);
 
+      // Aggregate analytics data
       const analytics = await ClickAnalytics.aggregate([
         { $match: { shortUrlId: { $in: urlIds } } },
         {
           $group: {
             _id: "$shortUrlId",
-            totalClicks: { $sum: 1 },
-            uniqueUsers: { $addToSet: "$ipAddress" },
-            clicksByDate: {
-              $push: {
-                date: {
-                  $dateToString: { format: "%Y-%m-%d", date: "$timestamp" },
-                },
-                count: 1,
-              },
-            },
+            totalClicks: { $sum: "$totalClicks" }, // Sum totalClicks from documents
+            uniqueUsers: { $addToSet: "$uniqueUsers.userId" }, // Ensure unique user IDs
+            clicksByDate: { $push: "$clicksByDate" }, // Collect all clicksByDate data
           },
         },
       ]);
 
       let totalClicks = 0;
-      let uniqueUsersSet = new Set();
+      let uniqueUsersSet = new Set<mongoose.Types.ObjectId>();
       let clicksByDateMap: Record<string, number> = {};
 
       const urlAnalytics = urls.map((url) => {
@@ -336,13 +376,19 @@ class UrlShortenerController {
         }
 
         totalClicks += data.totalClicks;
-        data.uniqueUsers.forEach((user: string) => uniqueUsersSet.add(user));
+        data.uniqueUsers.forEach((userId: mongoose.Types.ObjectId) =>
+          uniqueUsersSet.add(userId)
+        );
 
         // Aggregate clicks by date
-        data.clicksByDate.forEach((entry: { date: string; count: number }) => {
-          clicksByDateMap[entry.date] =
-            (clicksByDateMap[entry.date] || 0) + entry.count;
-        });
+        data.clicksByDate.forEach(
+          (clicksArray: { date: string; clickCount: number }[]) => {
+            clicksArray.forEach((entry) => {
+              clicksByDateMap[entry.date] =
+                (clicksByDateMap[entry.date] || 0) + entry.clickCount;
+            });
+          }
+        );
 
         return {
           shortUrl: url.shortUrl,
@@ -365,10 +411,63 @@ class UrlShortenerController {
         urls: urlAnalytics,
       };
 
+      // Cache for 10 minutes
       await redisClient.setex(cacheKey, 600, JSON.stringify(responseData));
 
       res.status(200).json(responseData);
     } catch (error) {
+      next(error);
+    }
+  }
+
+  public async getUserTopics(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return next(new AppError("Unauthorized", 400));
+      }
+
+      const cacheKey = `user:${userId}:topics`;
+      const cachedTopics = await redisClient.get(cacheKey);
+
+      if (cachedTopics) {
+        res.json(JSON.parse(cachedTopics));
+        return;
+      }
+
+      const topics = await ShortURL.distinct("topic", { createdBy: userId });
+
+      await redisClient.setex(cacheKey, 600, JSON.stringify(topics));
+
+      res.json(topics);
+    } catch (error) {
+      console.error("Error fetching topics:", error);
+      next(error);
+    }
+  }
+
+  public async getUserTopis(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return next(new AppError("Unauthorized", 400));
+      }
+
+      const cacheKey = `user:${userId}:topics`;
+      const cachedTopics = await redisClient.get(cacheKey);
+
+      // if (cachedTopics) {
+      //   res.json(JSON.parse(cachedTopics));
+      //   return
+      // }
+
+      const topics = await ShortURL.distinct("topic", { createdBy: userId });
+
+      await redisClient.setex(cacheKey, 600, JSON.stringify(topics));
+
+      res.json(topics);
+    } catch (error) {
+      console.error("Error fetching topics:", error);
       next(error);
     }
   }
@@ -385,10 +484,10 @@ class UrlShortenerController {
 
       // Check Redis cache
       const cachedData = await redisClient.get(cacheKey);
-      if (cachedData) {
-        res.status(200).json(JSON.parse(cachedData));
-        return;
-      }
+      // if (cachedData) {
+      //   res.status(200).json(JSON.parse(cachedData));
+      //   return;
+      // }
 
       // Fetch all URLs created by the user
       const urls = await ShortURL.find({ createdBy: userId }).select(
@@ -400,8 +499,8 @@ class UrlShortenerController {
           totalClicks: 0,
           uniqueUsers: 0,
           clicksByDate: [],
-          osType: [],
-          deviceType: [],
+          osTypeStats: [],
+          deviceTypeStats: [],
         });
         return;
       }
@@ -414,28 +513,11 @@ class UrlShortenerController {
         {
           $group: {
             _id: null,
-            totalClicks: { $sum: 1 },
-            uniqueUsers: { $addToSet: "$ipAddress" },
-            clicksByDate: {
-              $push: {
-                date: {
-                  $dateToString: { format: "%Y-%m-%d", date: "$timestamp" },
-                },
-                count: 1,
-              },
-            },
-            osType: {
-              $push: {
-                osName: "$osType",
-                ipAddress: "$ipAddress",
-              },
-            },
-            deviceType: {
-              $push: {
-                deviceName: "$deviceType",
-                ipAddress: "$ipAddress",
-              },
-            },
+            totalClicks: { $sum: "$totalClicks" }, // Sum totalClicks from documents
+            uniqueUsers: { $addToSet: "$uniqueUsers.userId" }, // Ensure unique user IDs
+            clicksByDate: { $push: "$clicksByDate" }, // Collect all clicksByDate data
+            osTypeStats: { $push: "$osTypeStats" }, // Collect OS type stats
+            deviceTypeStats: { $push: "$deviceTypeStats" }, // Collect Device type stats
           },
         },
       ]);
@@ -446,76 +528,89 @@ class UrlShortenerController {
           totalClicks: 0,
           uniqueUsers: 0,
           clicksByDate: [],
-          osType: [],
-          deviceType: [],
+          osTypeStats: [],
+          deviceTypeStats: [],
         });
         return;
       }
 
       const data = analytics[0];
 
+      // Process clicks by date
       const clicksByDateMap: Record<string, number> = {};
-      interface ClickByDateEntry {
-        date: string;
-        count: number;
-      }
-
-      interface OsTypeEntry {
-        osName: string;
-        ipAddress: string;
-      }
-
-      interface DeviceTypeEntry {
-        deviceName: string;
-        ipAddress: string;
-      }
-
-      data.clicksByDate.forEach((entry: ClickByDateEntry) => {
-        clicksByDateMap[entry.date] =
-          (clicksByDateMap[entry.date] || 0) + entry.count;
-      });
+      data.clicksByDate.forEach(
+        (clicksArray: { date: string; clickCount: number }[]) => {
+          clicksArray.forEach((entry) => {
+            clicksByDateMap[entry.date] =
+              (clicksByDateMap[entry.date] || 0) + entry.clickCount;
+          });
+        }
+      );
 
       const clicksByDate = Object.keys(clicksByDateMap).map((date) => ({
         date,
         totalClicks: clicksByDateMap[date],
       }));
 
-      const osTypeMap: Record<string, Set<string>> = {};
-      interface OsTypeEntry {
-        osName: string;
-        ipAddress: string;
-      }
-
-      data.osType.forEach((entry: OsTypeEntry) => {
-        if (!osTypeMap[entry.osName]) {
-          osTypeMap[entry.osName] = new Set<string>();
+      // Process OS type stats
+      const osTypeMap: Record<
+        string,
+        { uniqueClicks: number; uniqueUsers: number }
+      > = {};
+      data.osTypeStats?.forEach(
+        (
+          osStatsArray: {
+            osName: string;
+            uniqueClicks: number;
+            uniqueUsers: number;
+          }[]
+        ) => {
+          osStatsArray.forEach((entry) => {
+            if (!osTypeMap[entry.osName]) {
+              osTypeMap[entry.osName] = { uniqueClicks: 0, uniqueUsers: 0 };
+            }
+            osTypeMap[entry.osName].uniqueClicks += entry.uniqueClicks;
+            osTypeMap[entry.osName].uniqueUsers += entry.uniqueUsers;
+          });
         }
-        osTypeMap[entry.osName].add(entry.ipAddress);
-      });
+      );
 
-      const osType = Object.keys(osTypeMap).map((osName) => ({
+      const osTypeStats = Object.keys(osTypeMap).map((osName) => ({
         osName,
-        uniqueClicks: osTypeMap[osName].size,
-        uniqueUsers: osTypeMap[osName].size,
+        uniqueClicks: osTypeMap[osName].uniqueClicks,
+        uniqueUsers: osTypeMap[osName].uniqueUsers,
       }));
 
-      const deviceTypeMap: Record<string, Set<string>> = {};
-      interface DeviceTypeEntry {
-        deviceName: string;
-        ipAddress: string;
-      }
-
-      data.deviceType.forEach((entry: DeviceTypeEntry) => {
-        if (!deviceTypeMap[entry.deviceName]) {
-          deviceTypeMap[entry.deviceName] = new Set<string>();
+      // Process Device type stats
+      const deviceTypeMap: Record<
+        string,
+        { uniqueClicks: number; uniqueUsers: number }
+      > = {};
+      data.deviceTypeStats?.forEach(
+        (
+          deviceStatsArray: {
+            deviceName: string;
+            uniqueClicks: number;
+            uniqueUsers: number;
+          }[]
+        ) => {
+          deviceStatsArray.forEach((entry) => {
+            if (!deviceTypeMap[entry.deviceName]) {
+              deviceTypeMap[entry.deviceName] = {
+                uniqueClicks: 0,
+                uniqueUsers: 0,
+              };
+            }
+            deviceTypeMap[entry.deviceName].uniqueClicks += entry.uniqueClicks;
+            deviceTypeMap[entry.deviceName].uniqueUsers += entry.uniqueUsers;
+          });
         }
-        deviceTypeMap[entry.deviceName].add(entry.ipAddress);
-      });
+      );
 
-      const deviceType = Object.keys(deviceTypeMap).map((deviceName) => ({
+      const deviceTypeStats = Object.keys(deviceTypeMap).map((deviceName) => ({
         deviceName,
-        uniqueClicks: deviceTypeMap[deviceName].size,
-        uniqueUsers: deviceTypeMap[deviceName].size,
+        uniqueClicks: deviceTypeMap[deviceName].uniqueClicks,
+        uniqueUsers: deviceTypeMap[deviceName].uniqueUsers,
       }));
 
       const responseData = {
@@ -523,8 +618,8 @@ class UrlShortenerController {
         totalClicks: data.totalClicks,
         uniqueUsers: data.uniqueUsers.length,
         clicksByDate,
-        osType,
-        deviceType,
+        osTypeStats,
+        deviceTypeStats,
       };
 
       // Cache response for 10 minutes

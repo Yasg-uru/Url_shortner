@@ -22,7 +22,6 @@ const UserSchema = new Schema<IUser>(
   { timestamps: true }
 );
 
-// Index for efficient lookups
-UserSchema.index({ email: 1 }, { unique: true });
+
 
 export const User = mongoose.model<IUser>("User", UserSchema);
