@@ -27,7 +27,7 @@ authRouter.get(
     });
     
     // res.redirect("http://localhost:5173/");
-    res.redirect("https://url-shortner-frontend-virid.vercel.app");
+    res.redirect(process.env.CLIENT_URL as string);
   }
 );
 authRouter.post("/logout", (req: Request, res: Response) => {
