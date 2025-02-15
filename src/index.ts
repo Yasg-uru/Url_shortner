@@ -27,7 +27,7 @@ app.use(
 app.use(passport.initialize());
 app.use(passport.session());
 app.use(cors({
-  origin:["http://localhost:5173","https://url-shortner-frontend-virid.vercel.app", "https://url-shortner-frontend-hy4x.onrender.com"],
+  origin:["http://localhost:5173","https://url-shortner-frontend-virid.vercel.app",  "https://url-shortner-frontend-hy4x.onrender.com"],
   credentials:true
 }));
 app.use(cookieParser());
