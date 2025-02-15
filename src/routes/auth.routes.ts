@@ -27,7 +27,7 @@ authRouter.get(
     });
     
     // res.redirect("http://localhost:5173/");
-    res.redirect("https://url-shortner-frontend-hy4x.onrender.com");
+    res.redirect("https://url-shortner-frontend-virid.vercel.app");
   }
 );
 authRouter.post("/logout", (req: Request, res: Response) => {
