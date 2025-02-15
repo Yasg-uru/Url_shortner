@@ -35,11 +35,13 @@ authRouter.post("/logout", (req: Request, res: Response) => {
     return;
   }
 
-  res.clearCookie("token", {
+  res.cookie("token", token, {
     httpOnly: true,
-    secure: true,
     sameSite: "strict",
+    secure: true, // <-- Add this for HTTPS
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days expiry
   });
+  
 
   res.json({ message: "Logged out successfully" });
 });
