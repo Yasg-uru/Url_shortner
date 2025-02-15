@@ -12,10 +12,12 @@ import ShortenRouter from "./routes/shorten.routes";
 import cookieParser from "cookie-parser";
 import authRouter from "./routes/auth.routes";
 import { rateLimiter } from "./middlewares/rate-limiter.middleware";
+import { setupSwagger } from "./configurations/swagger";
 dotenv.config();
 
 const app: Application = express();
 
+app.use(cookieParser());
 app.use(
   session({
     secret: process.env.SESSION_SECRET || "supersecret",
@@ -24,21 +26,21 @@ app.use(
     cookie: { secure: false }, // Set `secure: true` in production with HTTPS
   })
 );
-app.use(passport.initialize());
-app.use(passport.session());
 app.use(cors({
   origin:["http://localhost:5173","https://url-shortner-frontend-virid.vercel.app",  "https://url-shortner-frontend-hy4x.onrender.com"],
-  credentials:true
+  credentials:true,
+  
 }));
-app.use(cookieParser());
-
 app.use(helmet());
 
 app.use(morgan("dev"));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(passport.initialize());
+app.use(passport.session());
 
+setupSwagger(app);
 app.get("/auth/user", (req: Request, res: Response): void => {
   if (req.isAuthenticated()) {
     res.json({ loggedIn: true, user: req.user, sessionID: req.sessionID });
