@@ -26,7 +26,7 @@ authRouter.get(
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days expiry
     });
     
-    // res.redirect("http://localhost:5173/");
+   
     res.redirect(process.env.CLIENT_URL as string);
   }
 );
