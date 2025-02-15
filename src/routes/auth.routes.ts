@@ -22,9 +22,12 @@ authRouter.get(
     res.cookie("token", token, {
       httpOnly: true,
       sameSite: "strict",
+      secure: true, // <-- Add this for HTTPS
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days expiry
     });
-    res.redirect("http://localhost:5173/");
+    
+    // res.redirect("http://localhost:5173/");
+    res.redirect("https://url-shortner-frontend-06gc.onrender.com");
   }
 );
 authRouter.post("/logout", (req: Request, res: Response) => {
