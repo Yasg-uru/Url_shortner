@@ -27,7 +27,7 @@ export const isAuthenticated = (
     req.user = decoded; // Attach user info to request
     next();
   } catch (error) {
-   
+   console.log('this is a error :', error)
     return next(new AppError('Invalid or expired token', 401))
   }
 };
