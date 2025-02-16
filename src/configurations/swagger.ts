@@ -1,6 +1,9 @@
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
-import { Application, Express } from "express";
+import { Application } from "express";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const options: swaggerJsdoc.Options = {
   definition: {
@@ -8,12 +11,17 @@ const options: swaggerJsdoc.Options = {
     info: {
       title: "URL Shortener API",
       version: "1.0.0",
-      description: "API documentation for authentication routes",
+      description: "Production-ready API documentation for URL Shortener",
+      contact: {
+        name: "Support Team",
+        email: "yashpawar12122004@gmail.com",
+        url: "https://url-shortner-aeg8.onrender.com",
+      },
     },
     servers: [
       {
-        url: "http://localhost:8000",
-        description: "Local server",
+        url: process.env.BASE_URL || "http://localhost:8000",
+        description:  "Production Server"
       },
     ],
     components: {
@@ -25,13 +33,18 @@ const options: swaggerJsdoc.Options = {
         },
       },
     },
+    security: [
+      {
+        bearerAuth: [],
+      },
+    ],
   },
-  apis: ["./src/routes/*.ts"],
+  apis: ["./src/routes/*.ts"], // Path to route files
 };
 
 const swaggerSpec = swaggerJsdoc(options);
 
 export const setupSwagger = (app: Application) => {
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-  console.log("Swagger docs available at http://localhost:8000/api-docs");
+  console.log(`Swagger docs available at ${process.env.BASE_URL}/api-docs`);
 };
