@@ -21,7 +21,7 @@ const authRouter = Router();
  *     description: |
  *       This endpoint redirects the user to Google's authentication page.
  *       **Note:** This request will not return a response in Swagger.  
- *       Please test it by visiting [http://localhost:5000/auth/google](http://localhost:5000/auth/google) in your browser.
+ *       Please test it by visiting [https://url-shortner-aeg8.onrender.com/auth/google](https://url-shortner-aeg8.onrender.com/auth/google) in your browser.
  *     operationId: googleAuth
  *     responses:
  *       302:
