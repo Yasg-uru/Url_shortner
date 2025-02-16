@@ -11,13 +11,17 @@ const authRouter = Router();
  *   description: API endpoints for user authentication
  */
 
+
 /**
  * @swagger
  * /auth/google:
  *   get:
  *     summary: Initiate Google Authentication
  *     tags: [Authentication]
- *     description: Redirects the user to Google's authentication page to sign in.
+ *     description: |
+ *       This endpoint redirects the user to Google's authentication page.
+ *       **Note:** This request will not return a response in Swagger.  
+ *       Please test it by visiting [http://localhost:5000/auth/google](http://localhost:5000/auth/google) in your browser.
  *     operationId: googleAuth
  *     responses:
  *       302:
@@ -35,24 +39,20 @@ authRouter.get(
  *   get:
  *     summary: Google Authentication Callback
  *     tags: [Authentication]
- *     description: Handles Google OAuth callback and sets an authentication token as a cookie.
+ *     description: |
+ *       Handles Google OAuth callback, sets an authentication token, and redirects the user.  
+ *       **Note:** This request will not return a response in Swagger.  
+ *       Please test it by visiting this path in your browser after successful login.
  *     operationId: googleAuthCallback
  *     responses:
  *       200:
  *         description: Authentication successful, user redirected.
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: "Authentication successful."
  *       401:
  *         description: Authentication failed.
  *       500:
  *         description: Internal server error.
  */
+
 authRouter.get(
   "/google/callback",
   passport.authenticate("google", { session: false }), // No session needed
@@ -75,6 +75,39 @@ authRouter.get(
     res.redirect(process.env.CLIENT_URL as string);
   }
 );
+/**
+ * @swagger
+ * /auth/token:
+ *   get:
+ *     summary: Retrieve JWT Token for Testing
+ *     tags: [Authentication]
+ *     description: Returns the authentication token from cookies for API testing.
+ *     operationId: getJwtToken
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved JWT token.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 token:
+ *                   type: string
+ *                   example: "eyJhbGciOiJIUzI1NiIsInR..."
+ *       401:
+ *         description: User is not authenticated.
+ */
+authRouter.get("/token", (req: Request, res: Response) => {
+  const token = req.cookies.token;
+
+  if (!token) {
+    res.status(401).json({ message: "No authentication token found. Please log in." });
+    return 
+  }
+
+  res.json({ token });
+});
+
 /**
  * @swagger
  * /auth/logout:
@@ -117,6 +150,7 @@ authRouter.post("/logout", (req: Request, res: Response) => {
 
   res.json({ message: "Logged out successfully" });
 });
+
 /**
  * @swagger
  * /auth/check:
