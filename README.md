@@ -111,7 +111,7 @@ A production-ready URL shortener built with **TypeScript** and **Express**. This
 ## API Documentation
 
 Explore the API documentation using **Swagger UI**:
-- Visit `http://localhost:3000/api-docs` after starting the server.
+- Visit `https://url-shortner-aeg8.onrender.com/api-docs/` after starting the server.
 
 ---
 
@@ -193,8 +193,8 @@ This project is licensed under the **ISC License**. See the [LICENSE](LICENSE) f
 
 👤 **Yash Choudhary**
 
-- GitHub: [Yasg-uru](https://github.com/Yasg-uru)
-- Email: [your-email@example.com](mailto:your-email@example.com)
+- GitHub: [yash Choudhary](https://github.com/Yasg-uru)
+- Email: [yashpawar12122004@gmail.com](yashpawar12122004@gmail.com)
 
 ---
 
