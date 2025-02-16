@@ -77,7 +77,7 @@ ShortenRouter.post(
 
 /**
  * @swagger
- * /api/redirect/{alias}:
+ * /api/shorten/{alias}:
  *   get:
  *     summary: Redirect to Original URL
  *     tags: [URL Redirect]
