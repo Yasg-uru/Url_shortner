@@ -81,7 +81,10 @@ ShortenRouter.post(
  *   get:
  *     summary: Redirect to Original URL
  *     tags: [URL Redirect]
- *     description: Redirects a short URL alias to its corresponding original long URL.
+ *     description: >
+ *       **Note:** This endpoint returns a 302 redirect to the original long URL.
+ *       Due to HTTP redirect behavior and CORS restrictions, Swagger UI might not follow the redirect.
+ *       For complete testing, please use Postman or your browser.
  *     operationId: redirectToLongUrl
  *     security:
  *       - bearerAuth: []
@@ -110,6 +113,7 @@ ShortenRouter.post(
  *       500:
  *         description: Internal server error.
  */
+
 ShortenRouter.get("/shorten/:alias", isAuthenticated, urlController.redirect);
 /**
  * @swagger
