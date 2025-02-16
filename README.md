@@ -15,8 +15,13 @@ Experience the URL shortener in action! Shorten URLs, manage your links, and vie
 API Documentation: [api-docs](https://url-shortner-aeg8.onrender.com/api-docs/)
 Explore the API endpoints, request/response schemas, and usage examples.
 
-GitHub Repository: [gitHub](https://github.com/Yasg-uru/Url_shortner)
+Backend GitHub Repository: [GitHub](https://github.com/Yasg-uru/Url_shortner)
 View the source code, contribute, or report issues.
+
+Frontend GitHub Repository: [Frontend GitHub](https://github.com/Yasg-uru/url-shortner-frontend)
+Explore the frontend codebase built with React, TypeScript, and Tailwind CSS.
+
+
 
 ## Features
 
