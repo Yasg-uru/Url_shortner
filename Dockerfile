@@ -1,5 +1,5 @@
 # Use an official Node.js image as the base
-FROM node:18
+FROM ghcr.io/node:18
 
 
 

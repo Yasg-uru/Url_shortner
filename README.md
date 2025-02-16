@@ -8,6 +8,15 @@
 A production-ready URL shortener built with **TypeScript** and **Express**. This project provides a robust API for shortening URLs, managing user authentication, and retrieving detailed analytics. It is designed to be scalable, secure, and easy to integrate into modern web applications.
 
 ---
+# Live Links
+Live Demo: [Live Demo](https://url-shortner-frontend-virid.vercel.app)
+Experience the URL shortener in action! Shorten URLs, manage your links, and view analytics.
+
+API Documentation: [api-docs](https://url-shortner-aeg8.onrender.com/api-docs/)
+Explore the API endpoints, request/response schemas, and usage examples.
+
+GitHub Repository: [gitHub](https://github.com/Yasg-uru/Url_shortner)
+View the source code, contribute, or report issues.
 
 ## Features
 
